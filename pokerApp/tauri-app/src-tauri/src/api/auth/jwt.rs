@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use anyhow::Result;
-use std::time::{SystemTime, UNIX_EPOCH};
 use dotenvy::dotenv;
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use serde::{Deserialize, Serialize};
 use std::env;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize)]
 struct Claims {
@@ -21,12 +21,12 @@ pub fn create_jwt(username: &str) -> Result<String> {
         sub: username.to_string(),
         exp: expiration as usize,
     };
- 
+
     let key = EncodingKey::from_secret(secret.as_bytes());
     let token = encode(&Header::default(), &claims, &key)?;
     Ok(token)
 }
- 
+
 pub fn decode_jwt(token: &str) -> Result<String> {
     dotenv().ok();
     let secret = env::var("SECRET_KEY")?;

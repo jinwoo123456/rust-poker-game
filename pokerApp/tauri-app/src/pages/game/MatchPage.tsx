@@ -1,9 +1,9 @@
 import { API_URL } from "@/utils/path";
 import { LoadingOverlay } from "@/utils/loading";
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Cookie from 'js-cookie';
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 type Player = {
     userid: string;
     status: number;
@@ -15,24 +15,55 @@ export default function MatchPage() {
     const [matchList, setMatchList] = useState<Player[]>([]);
     const [matchStatus] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
-    const navigate = useNavigate(); 
+    const [hasRedirected, setHasRedirected] = useState(false);
+    const [isMatching, setIsMatching] = useState(false);
+    const navigate = useNavigate();
+    const userId = Cookie.get('userid');
     const getKstIsoString = () => {
         const now = new Date();
         const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
         return kst.toISOString().replace('Z', '+09:00');
     };
 
+    async function handleSoloMatch() {
+         if (!userId) {
+            console.error('로그인 정보가 없습니다.');
+            return;
+        }
 
+        if (isMatching) {
+            console.info('이미 매칭 진행 중입니다.');
+            return;
+        }
+        try {
+            setIsLoading(true);
+            setIsMatching(true);
+            navigate('/game', { state: userId});
+            
+
+        } catch (error) {
+            console.error('매칭 생성 중 오류 발생:', error);
+        } finally {
+            setIsLoading(false);
+            setIsMatching(false);
+        }
+    }
     async function handleStartGame(playerId: string) {
+
+        if (!userId) {
+            console.error('로그인 정보가 없습니다.');
+            return;
+        }
 
         try{
             setIsLoading(true);
             const resp = await axios.post(`${API_URL}/holdem/start`, {
-                my_player_id: Cookie.get('userid'),
+                player_id: userId,
                 select_player_id : playerId,
             });
             console.log('게임 시작 결과:', resp.data);
-            navigate('/holdem');
+            setHasRedirected(true);
+            navigate('/holdem', { state: resp.data });
         } catch (error) {
             console.error('게임 시작 중 오류 발생:', error);
         } finally {
@@ -42,20 +73,36 @@ export default function MatchPage() {
 
 
     async function handleMatch() {
+        if (!userId) {
+            console.error('로그인 정보가 없습니다.');
+            return;
+        }
+
+        if (isMatching) {
+            console.info('이미 매칭 진행 중입니다.');
+            return;
+        }
         try {
             setIsLoading(true);
+            setIsMatching(true);
             const resp = await axios.post(`${API_URL}/match/create`, {
-                userid: Cookie.get('userid'),
+                userid: userId,
                 status: matchStatus,
                 match_at: getKstIsoString(),
             });
             console.log('매칭 생성 결과:', resp.data);
-            await getMatchList();
+            if (resp.data?.game_started && resp.data.game) {
+                setHasRedirected(true);
+                navigate('/holdem', { state: resp.data.game });
+            } else {
+                await getMatchList();
+            }
 
         } catch (error) {
             console.error('매칭 생성 중 오류 발생:', error);
         } finally {
             setIsLoading(false);
+            setIsMatching(false);
         }
     }
     async function getMatchList() {
@@ -72,11 +119,56 @@ export default function MatchPage() {
             console.error('매칭된 플레이어 목록을 가져오는 중 오류 발생:', error);
         }
     };
- 
+    const checkActiveGame = useCallback(async () => {
+        if (hasRedirected || !userId) {
+            return;
+        }
+
+        try {
+            const resp = await axios.get(`${API_URL}/holdem/active/${userId}`);
+            const data = resp.data;
+
+            if (data?.success === 1 && data.game) {
+                setHasRedirected(true);
+                navigate('/holdem', { state: data.game });
+            }
+        } catch (error) {
+            console.error('게임 상태 확인 중 오류 발생:', error);
+        }
+    }, [hasRedirected, navigate, userId]);
+
     useEffect(() => {
+        let intervalId: ReturnType<typeof setInterval> | null = null;
+
+        const startPolling = () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+            intervalId = setInterval(() => {
+                getMatchList();
+                checkActiveGame();
+            }, 5000);
+        };
+
         getMatchList();
+        checkActiveGame();
         console.log("매칭 페이지가 로드되었습니다.");
-    }, []);
+        startPolling();
+
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+        };
+    }, [checkActiveGame, isMatching]);
+
+    const filteredMatchList = useMemo(() => {
+        if (!userId) {
+            return matchList;
+        }
+
+        return matchList.filter((player) => player.userid !== userId);
+    }, [matchList, userId]);
 
     return (
         <>
@@ -84,9 +176,15 @@ export default function MatchPage() {
             <div className="container py-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                     <h1 className="h3 mb-0">매칭 페이지</h1>
-                    <button className="btn btn-primary" onClick={handleMatch}>
-                        매칭 잡기
-                    </button>
+                    <div style={{}}>
+                        <button className="btn btn-primary" onClick={handleMatch}>
+                            {isMatching ? '매칭 중...' : '매칭 잡기'}
+                        </button>
+                       
+                        <button className="btn btn-primary" onClick={handleSoloMatch}>
+                            {isMatching ? '매칭 중...' : 'AI랑 하기'}
+                        </button>
+                    </div>
                 </div>
                 <div className="card shadow-sm">
                     <div className="card-body p-0">
@@ -99,8 +197,8 @@ export default function MatchPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {matchList.length > 0 ? (
-                                    matchList.map((player, index) => (
+                                {filteredMatchList.length > 0 ? (
+                                    filteredMatchList.map((player, index) => (
                                         <tr key={index}>
                                             <td className="fw-semibold">{player.userid}</td>
                                             <td>{new Date(player.match_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</td>
@@ -112,7 +210,7 @@ export default function MatchPage() {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={2} className="py-4 text-muted">
+                                        <td colSpan={3} className="py-4 text-muted">
                                             아직 매칭된 플레이어가 없습니다.
                                         </td>
                                     </tr>

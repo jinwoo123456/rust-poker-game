@@ -1,12 +1,28 @@
 import { LoadingOverlay } from "@/utils/loading";
 import { API_URL } from "@/utils/path";
 import axios from "axios";
-import { useCallback, useState } from "react";
+import Cookie from "js-cookie";
+import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
+
+type PlayerSnapshot = {
+    card1?: string;
+    card2?: string;
+    chips?: number;
+};
+
+type GameSnapshot = {
+    game_id?: string;
+    player_id?: string;
+    player?: PlayerSnapshot;
+    community_cards?: string[];
+    blind?: number;
+};
 
 type HoldemResponse = {
-    my_cards?: string[];
-    community_cards?: string[];
-    message?: string;
+    success?: number;
+    game?: GameSnapshot | null;
+    error?: string;
 };
 
 export default function Holdem() {
@@ -14,27 +30,53 @@ export default function Holdem() {
     const [communityCards, setCommunityCards] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [blind, setBlind] = useState<number | null>(null);
+
+    const location = useLocation();
+    const userId = Cookie.get("userid");
+
+    const updateFromGame = useCallback((game?: GameSnapshot | null) => {
+        if (!game) {
+            setMyCards([]);
+            setCommunityCards([]);
+            setBlind(null);
+            return;
+        }
+
+        const playerCards = [game.player?.card1, game.player?.card2].filter(
+            (card): card is string => typeof card === "string" && card.length > 0,
+        );
+        setMyCards(playerCards);
+
+        const community = Array.isArray(game.community_cards)
+            ? game.community_cards.filter((card): card is string => typeof card === "string" && card.length > 0)
+            : [];
+        setCommunityCards(community);
+
+        setBlind(typeof game.blind === "number" ? game.blind : null);
+    }, []);
 
     const handleDeal = useCallback(async () => {
+        if (!userId) {
+            setError("로그인 정보가 없습니다.");
+            return;
+        }
+
         setIsLoading(true);
         setError(null);
         try {
-            const resp = await axios.post<HoldemResponse>(`${API_URL}/holdem/mycard`, {
-                playerCards: myCards,
-            });
+            const resp = await axios.get<HoldemResponse>(`${API_URL}/holdem/active/${userId}`);
             const data = resp.data ?? {};
             console.log("홀덤 카드 응답 데이터:", data);
 
-            if (Array.isArray(data.my_cards)) {
-                setMyCards(data.my_cards);
+            if (data.success === 1 && data.game) {
+                updateFromGame(data.game);
+                if (!data.game.player?.card1 && !data.game.player?.card2) {
+                    setError("등록된 카드 정보가 없습니다. 매칭을 다시 시도해주세요.");
+                }
             } else {
-                setMyCards([]);
-            }
-
-            if (Array.isArray(data.community_cards)) {
-                setCommunityCards(data.community_cards);
-            } else {
-                setCommunityCards([]);
+                updateFromGame(null);
+                setError(data.error ?? "게임 정보가 없습니다. 매칭을 다시 시도해주세요.");
             }
         } catch (err) {
             console.error("홀덤 카드 요청 중 오류", err);
@@ -42,12 +84,36 @@ export default function Holdem() {
         } finally {
             setIsLoading(false);
         }
-    }, [myCards]);
+    }, [updateFromGame, userId]);
+
+    useEffect(() => {
+        const state = location.state as unknown;
+        if (!state || typeof state !== "object") {
+            return;
+        }
+
+        const stateRecord = state as Record<string, unknown>;
+        const maybeGame = (stateRecord.game ?? state) as GameSnapshot | null;
+
+        if (maybeGame && (maybeGame.community_cards || maybeGame.player)) {
+            updateFromGame(maybeGame);
+        }
+    }, [location.state, updateFromGame]);
+
+    useEffect(() => {
+        if (!userId) {
+            setError("로그인 정보가 없습니다.");
+            return;
+        }
+
+        handleDeal();
+    }, [handleDeal, userId]);
 
     const handleReset = () => {
         setMyCards([]);
         setCommunityCards([]);
         setError(null);
+        setBlind(null);
     };
 
     return (
@@ -69,6 +135,12 @@ export default function Holdem() {
                 {error && (
                     <div className="alert alert-danger" role="alert">
                         {error}
+                    </div>
+                )}
+
+                {blind !== null && (
+                    <div className="alert alert-info" role="status">
+                        현재 블라인드: {blind.toLocaleString()} chips
                     </div>
                 )}
 

@@ -5,6 +5,7 @@ import LoginPages from '@/pages/auth/LoginPage';
 import SignupPage from '@/pages/auth/SignupPage';
 import MatchPage from '@/pages/game/MatchPage';
 import HoldemPage from '@/pages/game/Holdem';
+import GamePage from '@/pages/game/GamePage';
 const AppRouter: React.FC = () => {
   return (
     <Router>
@@ -15,6 +16,7 @@ const AppRouter: React.FC = () => {
         <Route path="/app" element={<App />} />
         <Route path="/match" element={<MatchPage />} />
         <Route path="/holdem" element={<HoldemPage />} />
+        <Route path="/game" element={<GamePage />} />
       </Routes>
     </Router>
   );

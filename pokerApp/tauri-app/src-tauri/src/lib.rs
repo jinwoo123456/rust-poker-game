@@ -1,15 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-pub mod api; 
-mod db;  
-pub mod holdem;
-use tauri::Manager;
+pub mod api;
+mod db;
+pub mod utils;
+
+use crate::db::db_connect::db_connect;
 use axum::Router;
-use tower_http::cors::CorsLayer;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
-use crate::db::db_connect::db_connect;
-
+use tauri::Manager;
+use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,8 +22,10 @@ fn greet(name: &str) -> String {
 }
 fn build_axum() -> Router<AppState> {
     Router::new()
-    .merge(crate::api::auth::routes::router())
-    .merge(crate::api::game_match::routes::router())
+        .merge(crate::api::auth::routes::router())
+        .merge(crate::api::game_match::routes::router())
+        .merge(crate::api::holdem::routes::router())
+        .merge(crate::api::soloplay::routes::router())
         .layer(CorsLayer::permissive())
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,11 +33,9 @@ fn build_axum() -> Router<AppState> {
 pub async fn run() {
     let db = db_connect().await;
     tauri::Builder::default()
-        .manage(AppState{
-            db: Arc::new(db),
-        })
+        .manage(AppState { db: Arc::new(db) })
         .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet])
         .setup(|app| {
             let app_state = app.state::<AppState>().inner().clone();
             tauri::async_runtime::spawn(async move {
@@ -47,9 +47,8 @@ pub async fn run() {
                     eprintln!("axum serve error: {e}");
                 }
             });
-            Ok(()) 
+            Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

@@ -1,5 +1,5 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime,Utc};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MatchPlayer {
@@ -12,9 +12,6 @@ pub struct MatchPlayer {
 pub struct MatchPlayerList {
     pub players: Vec<MatchPlayer>,
 }
-
-
-
 
 // impl Default for MatchRequest {
 //     fn default() -> Self {
