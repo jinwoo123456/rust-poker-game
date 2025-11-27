@@ -20,7 +20,14 @@ pub struct CommunityCards {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StratGame {
-    pub game_id: String,
+    pub player1_id: String,
+    pub player1_money: i32,
+    pub player1_card1: String,
+    pub player1_card2: String,
+    pub player2_id: String,
+    pub player2_money: i32,
+    pub player2_card1: String,
+    pub player2_card2: String,
     pub blind: i32,
     pub pot: i32,
     pub community_card1 : String,

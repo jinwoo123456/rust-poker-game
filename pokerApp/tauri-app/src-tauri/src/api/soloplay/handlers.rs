@@ -1,10 +1,10 @@
+use super::agent;
 use super::dto;
 use super::holdem_algo;
-use super::agent;
-use crate::AppState;
-use crate::api::soloplay::holdem_algo::GameTrait;
 use crate::api::soloplay::agent::Bot;
-pub use rs_poker::core::{Card, Deck, Rank, Rankable};
+use crate::api::soloplay::holdem_algo::GameTrait;
+use crate::AppState;
+use async_trait::async_trait;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{
@@ -12,11 +12,9 @@ use axum::{
     Json,
 };
 pub use rand::rng;
+pub use rs_poker::core::{Card, Deck, Rank, Rankable};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryTrait, Statement};
 use serde_json::json;
-use async_trait::async_trait;
-
-
 
 #[derive(Debug, Clone)]
 pub struct CreateGame {
@@ -87,38 +85,36 @@ pub trait GameHandlersTrait {
     //     State(app_state): State<AppState>,
     //     Path(game_id): Path<String>,
     // ) -> impl IntoResponse;
- }
+}
 pub struct GameHandlers;
 #[async_trait]
 impl GameHandlersTrait for GameHandlers {
-     async fn start_solo_game(
+    async fn start_solo_game(
         State(app_state): State<AppState>,
         Json(payload): Json<dto::StartPlayers>,
     ) -> impl IntoResponse {
-         let db = app_state.db.clone();
+        let db = app_state.db.clone();
 
         //=============가진 금액 설정 ===============
-            
 
-
-         //=============패 주기 =============
-         // 게임 세팅 ( 유저 , 봇  지정)
-         let mut bot =  Bot {
+        //=============패 주기 =============
+        // 게임 세팅 ( 유저 , 봇  지정)
+        let mut bot = Bot {
             bot_id: "1".to_owned(),
             bot_name: String::from("jinwoo_bot"),
             cards: Vec::new(),
             money: 20000,
             game_played: 1,
-         };
-         let mut player = Player {
-              player_id: payload.player_id,
-             player_name: "플레이어".to_owned(),
-             cards: Vec::new(),
-             money: 20000,
-             game_played: 1,
-         };
-         // 게임 생성 ( 한판마다 다시 생성됨 . )
-         let  mut game =  holdem_algo::Game {
+        };
+        let mut player = Player {
+            player_id: payload.player_id,
+            player_name: "플레이어".to_owned(),
+            cards: Vec::new(),
+            money: 20000,
+            game_played: 1,
+        };
+        // 게임 생성 ( 한판마다 다시 생성됨 . )
+        let mut game = holdem_algo::Game {
             players_id: vec![player.player_id.clone(), bot.bot_id.clone()],
             community_cards: Vec::new(),
             deck: Deck::default(),
@@ -126,80 +122,97 @@ impl GameHandlersTrait for GameHandlers {
         };
         player.cards = game.start_dealing();
         bot.cards = game.start_dealing();
-        
+
         // 공유패 미리 받아놓기
         game.open_flop();
         game.open_turn();
         game.open_river();
         game.pot = 0;
-        println!("플랍카드 : {} {} {} 턴카드 :  {} 리버카드:  {} ",
-         game.community_cards[0],
-          game.community_cards[1], 
-          game.community_cards[2],
-          game.community_cards[3], 
-          game.community_cards[4]);
+        println!(
+            "플랍카드 : {} {} {} 턴카드 :  {} 리버카드:  {} ",
+            game.community_cards[0],
+            game.community_cards[1],
+            game.community_cards[2],
+            game.community_cards[3],
+            game.community_cards[4]
+        );
 
+        // 쿼리 =================
+        let insert_holdem_game_sql = r#"
+            INSERT INTO holdem_games (
+                player1_id, player1_money, player1_card1, player1_card2,
+                player2_id, player2_money, player2_card1, player2_card2,
+                community_cards1, community_cards2, community_cards3, community_cards4, community_cards5,
+                blind, pot
+            )
+            VALUES (
+                $1, $2, $3, $4,
+                $5, $6, $7, $8,
+                $9, $10, $11, $12, $13,
+                $14, 0
+            )
+            RETURNING game_id
+            "#;
+        let startgame = dto::StratGame {
+            player1_id: player.player_id.clone(),
+            player1_money: player.money,
+            player1_card1: format!("{}", player.cards[0]),
+            player1_card2: format!("{}", player.cards[1]),
+            player2_id: bot.bot_id.clone(),
+            player2_money: bot.money,
+            player2_card1: format!("{}", bot.cards[0]),
+            player2_card2: format!("{}", bot.cards[1]),
+            community_card1: format!("{}", game.community_cards[0]),
+            community_card2: format!("{}", game.community_cards[1]),
+            community_card3: format!("{}", game.community_cards[2]),
+            community_card4: format!("{}", game.community_cards[3]),
+            community_card5: format!("{}", game.community_cards[4]),
+            blind: 200,
+            pot: 0,
+        };
+        let game_stmt = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            insert_holdem_game_sql,
+            vec![
+                // startgame.game_id.clone().into(),
+                startgame.player1_id.clone().into(),
+                startgame.player1_money.into(),
+                startgame.player1_card1.clone().into(),
+                startgame.player1_card2.clone().into(),
+                startgame.player2_id.clone().into(),
+                startgame.player2_money.into(),
+                startgame.player2_card1.clone().into(),
+                startgame.player2_card2.clone().into(),
+                startgame.community_card1.clone().into(),
+                startgame.community_card2.clone().into(),
+                startgame.community_card3.clone().into(),
+                startgame.community_card4.clone().into(),
+                startgame.community_card5.clone().into(),
+                startgame.blind.into(),
+            ],
+        );
+        let game_result = db.execute(game_stmt).await.expect("게임 시작 쿼리 오류");
+        println!(
+            "holdem_games inserted rows: {}",
+            game_result.rows_affected()
+        );
+        //
+        let body = json!({
+           "success": 1,
+           "player_id": player.player_id,
+           "player_cards": format!("{:?}", player.cards),
+           "bot_id": bot.bot_id,
+           "bot_name": bot.bot_name,
+        });
 
-          // 쿼리 =================
-         let insert_holdem_game_sql = r#"
-        INSERT INTO holdem_games 
-        (game_id, community_cards1, community_cards2, community_cards3, community_cards4, community_cards5 , blind)
-        VALUES ($1, $2, $3, $4, $5, $6 , $7)
-                    ON CONFLICT (game_id) DO UPDATE SET
-                            community_cards1 = EXCLUDED.community_cards1,
-                            community_cards2 = EXCLUDED.community_cards2,
-                            community_cards3 = EXCLUDED.community_cards3,
-                            community_cards4 = EXCLUDED.community_cards4,
-                            community_cards5 = EXCLUDED.community_cards5,
-                            blind = EXCLUDED.blind,
-                            pot = 0
-    "#;
-
-    let startgame = dto::StratGame {
-        game_id: "game_1".to_owned(),
-        community_card1: format!("{}", game.community_cards[0]),
-        community_card2: format!("{}", game.community_cards[1]),
-        community_card3: format!("{}", game.community_cards[2]),
-        community_card4: format!("{}", game.community_cards[3]),
-        community_card5: format!("{}", game.community_cards[4]),
-        blind: 200,
-        pot : 0,
-    };
-    let game_stmt = Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        insert_holdem_game_sql,
-        vec![
-            startgame.game_id.clone().into(),
-            startgame.community_card1.clone().into(),
-            startgame.community_card2.clone().into(),
-            startgame.community_card3.clone().into(),
-            startgame.community_card4.clone().into(),
-            startgame.community_card5.clone().into(),
-            startgame.blind.into(),
-        ],
-    );
-    let game_result = db.execute(game_stmt).await.expect("게임 시작 쿼리 오류");
-    println!(
-        "holdem_games inserted rows: {}",
-        game_result.rows_affected()
-    );
- //
-         let body = json!({
-            "success": 1,
-            "player_id": player.player_id,
-            "player_cards": format!("{:?}", player.cards),
-            "bot_id": bot.bot_id,
-            "bot_name": bot.bot_name,
-         });
-         
         (StatusCode::OK, Json(body))
     }
 }
 
-/* 
+/*
 async fn persist_game_setup(db: &DatabaseConnection, setup: &GameSetup) -> Result<(), DbErr> {
     let insert_holdem_game_sql = r#"
-        INSERT INTO holdem_games 
+        INSERT INTO holdem_games
         (game_id, community_cards1, community_cards2, community_cards3, community_cards4, community_cards5 , blind)
         VALUES ($1, $2, $3, $4, $5, $6 , $7)
                     ON CONFLICT (game_id) DO UPDATE SET
