@@ -4,6 +4,31 @@ pub use rand::rng;
 pub use rs_poker::core::{Card, Deck, Rank, Rankable};
 use std::cmp::Ordering;
 
+///
+pub fn check_winner(
+    player_cards: &Vec<Card>,
+    bot_cards: &Vec<Card>,
+    community_cards: &Vec<Card>,
+) -> Vec<(i32, Rank)> {
+    let mut players: Vec<Player> = Vec::new();
+
+    let mut player = Player::default();
+    player.player_id = 1;
+    player.cards = player_cards.clone();
+    players.push(player);
+
+    let mut bot = Player::default();
+    bot.player_id = 2;
+    bot.cards = bot_cards.clone();
+    players.push(bot);
+
+    let mut game = Game::default();
+    game.community_cards = community_cards.clone();
+
+    let player_refs: Vec<&Player> = players.iter().collect();
+    let winners = game.get_winner(&player_refs);
+    winners
+}
 
 #[derive(Debug, Clone)]
 pub struct Game {
@@ -21,8 +46,6 @@ pub struct Player {
     pub money: i32,
     pub game_played: i32,
 }
-
-
 
 // Game 기본값
 impl Default for Game {
@@ -111,7 +134,8 @@ impl GameTrait for Game {
     fn open_flop(&mut self) {
         let mut rng = rng();
         for _ in 0..3 {
-            self.community_cards.push(self.deck.deal(&mut rng).expect("플랍오픈실패"));
+            self.community_cards
+                .push(self.deck.deal(&mut rng).expect("플랍오픈실패"));
             println!("플랍 : {:?}", &self.community_cards);
         }
     }

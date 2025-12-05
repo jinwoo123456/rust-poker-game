@@ -29,9 +29,8 @@ fn build_axum() -> Router<AppState> {
         .layer(CorsLayer::permissive())
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-#[tokio::main]
-pub async fn run() {
-    let db = db_connect().await;
+pub fn run() {
+    let db = tauri::async_runtime::block_on(async { db_connect().await });
     tauri::Builder::default()
         .manage(AppState { db: Arc::new(db) })
         .plugin(tauri_plugin_opener::init())

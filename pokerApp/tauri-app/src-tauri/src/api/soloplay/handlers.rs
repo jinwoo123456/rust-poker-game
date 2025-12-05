@@ -11,9 +11,13 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use std::str::FromStr;
+
 pub use rand::rng;
 pub use rs_poker::core::{Card, Deck, Rank, Rankable};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryTrait, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryTrait, Statement, TryGetable,
+};
 use serde_json::json;
 
 #[derive(Debug, Clone)]
@@ -69,6 +73,12 @@ pub trait GameHandlersTrait {
         State(app_state): State<AppState>,
         Json(payload): Json<dto::StartPlayers>,
     ) -> impl IntoResponse;
+
+    // async fn player_action(
+    //     State(app_state): State<AppState>,
+    //     Json(payload): Json<dto::PlayerAction>,
+    // ) -> impl IntoResponse;
+
     // async fn get_cards(
     //     State(app_state): State<AppState>,
     //     Path(player_id): Path<String>,
@@ -86,6 +96,73 @@ pub trait GameHandlersTrait {
     //     Path(game_id): Path<String>,
     // ) -> impl IntoResponse;
 }
+pub struct GetWinnerHandler;
+#[async_trait]
+pub trait GetWinnerTrait {
+    async fn get_winner(
+        State(app_state): State<AppState>,
+        Json(payload): Json<dto::getWinnerReq>,
+    ) -> impl IntoResponse;
+}
+
+#[async_trait]
+impl GetWinnerTrait for GetWinnerHandler {
+    async fn get_winner(
+        State(app_state): State<AppState>,
+        Json(payload): Json<dto::getWinnerReq>,
+    ) -> impl IntoResponse {
+        let player_cards: Vec<Card> = payload
+            .playerCards
+            .iter()
+            .map(|s| Card::try_from(s.as_str()).expect("플레이어 카드 형변환 실패"))
+            .collect();
+
+        let bot_cards: Vec<Card> = payload
+            .botCards
+            .iter()
+            .map(|s| Card::try_from(s.as_str()).expect("봇 카드 형변환 실패"))
+            .collect();
+
+        let community_cards: Vec<Card> = payload
+            .communityCards
+            .iter()
+            .map(|s| Card::try_from(s.as_str()).expect("커뮤니티 카드 형변환 실패"))
+            .collect();
+
+        println!("플레이어 카드 : {:?}", player_cards);
+        println!("봇 카드 : {:?}", bot_cards);
+        println!("커뮤니티 카드 : {:?}", community_cards);
+        // 2) 승자 계산
+        let raw_winners = holdem_algo::check_winner(&player_cards, &bot_cards, &community_cards);
+        println!("승자 결과 (raw) : {:?}", raw_winners);
+
+        let winner_details: Vec<dto::WinnerDetail> = raw_winners
+            .iter()
+            .map(|(player_id, rank)| dto::WinnerDetail {
+                player_id: *player_id,
+                rank: format!("{:?}", rank),
+            })
+            .collect();
+
+        let result = if winner_details.len() == 1 {
+            match winner_details[0].player_id {
+                1 => "player".to_string(),
+                2 => "bot".to_string(),
+                _ => "unknown".to_string(),
+            }
+        } else {
+            "draw".to_string()
+        };
+
+        let resp_body = dto::WinnerResponse {
+            result,
+            winners: winner_details,
+        };
+
+        (StatusCode::OK, Json(resp_body))
+    }
+}
+
 pub struct GameHandlers;
 #[async_trait]
 impl GameHandlersTrait for GameHandlers {
@@ -122,6 +199,7 @@ impl GameHandlersTrait for GameHandlers {
         };
         player.cards = game.start_dealing();
         bot.cards = game.start_dealing();
+        println!("봇카드 {:?}", bot.cards);
 
         // 공유패 미리 받아놓기
         game.open_flop();
@@ -170,7 +248,7 @@ impl GameHandlersTrait for GameHandlers {
             blind: 200,
             pot: 0,
         };
-        let game_stmt = Statement::from_sql_and_values(
+        let game_stmt: Statement = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             insert_holdem_game_sql,
             vec![
@@ -191,22 +269,53 @@ impl GameHandlersTrait for GameHandlers {
                 startgame.blind.into(),
             ],
         );
-        let game_result = db.execute(game_stmt).await.expect("게임 시작 쿼리 오류");
-        println!(
-            "holdem_games inserted rows: {}",
-            game_result.rows_affected()
-        );
-        //
+        let row_opt = db.query_one(game_stmt).await.expect("게임 시작 쿼리 오류");
+
+        let game_id: i64 = if let Some(row) = row_opt {
+            // 첫 번째 인자 "" = 테이블 alias (없으면 빈 문자열)
+            row.try_get("", "game_id").expect("game_id 가져오기 실패")
+        } else {
+            eprintln!("게임 생성 실패: game_id row 없음");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": 0,
+                    "message": "게임 생성 실패",
+                })),
+            );
+        };
+
+        println!("생성된 game_id: {}", game_id);
         let body = json!({
+             "game_id": game_id,
            "success": 1,
            "player_id": player.player_id,
            "player_cards": format!("{:?}", player.cards),
+           "bot_cards": format!("{:?}", bot.cards),
+           "comunity_cards": format!("{:?}", game.community_cards),
            "bot_id": bot.bot_id,
            "bot_name": bot.bot_name,
+            "blind": startgame.blind,
+            "player_money": player.money,
+            "bot_money": bot.money,
+            "pot": game.pot,
         });
 
         (StatusCode::OK, Json(body))
     }
+
+    //액션은 프론트에서 처리
+    // async fn player_action(
+    //     State(app_state): State<AppState>,
+    //     Json(payload): Json<dto::PlayerAction>,
+    // ) -> impl IntoResponse {
+    //     // let db = app_state.db.clone();
+
+    //     // let select_get_player_money_sql = r#"
+    //     //     SELECT player1_money, player2_money, pot FROM holdem_games
+    //     //     WHERE player1_id = $1 OR player2_id = $1
+    //     //     "#;
+    // }
 }
 
 /*

@@ -1,4 +1,3 @@
-import '@/styles/pages/auth/auth-pages.css';
 import '@/styles/pages/game/game-page.css';
 import tableImg from '@/assets/images/poker-table.png';
 import { LoadingOverlay } from "@/utils/loading";
@@ -76,11 +75,37 @@ import card2d from "@/assets/images/Playing Cards/SVG-cards-1.3/2_of_diamonds.sv
 
 
 export default function GamePage() {
-     const userId = Cookie.get('userid');
-     const [firstCard , setFirstCard]  = useState("");
-     const [secondCard , setSecondCard]  = useState("");
-     const [myMoney , setMyMoney]  = useState(0);
-    //  const [bet , setBet]  = useState(0);
+    const userId = Cookie.get('userid');
+    const [firstCard, setFirstCard] = useState("");
+    const [secondCard, setSecondCard] = useState("");
+    const [botFirstCard, setBotFirstCard] = useState("");
+    const [botSecondCard, setBotSecondCard] = useState("");
+    const [gameId, setGameId] = useState("");
+    const [myMoney, setMyMoney] = useState(20000);
+    const [botMoney, setBotMoney] = useState(20000);
+    const [communitiyCard1, setCommunitiyCard1] = useState("");
+    const [communitiyCard2, setCommunitiyCard2] = useState("");
+    const [communitiyCard3, setCommunitiyCard3] = useState("");
+    const [communitiyCard4, setCommunitiyCard4] = useState("");
+    const [communitiyCard5, setCommunitiyCard5] = useState("");
+    const [gameState, setGameState] = useState("blind");
+    const [bet, setBet] = useState<number>(0);
+    const [botAction, setBotAction] = useState("");
+    const [botBet, setBotBet] = useState(0);
+    const [pot, setPot] = useState(0);
+    const [playerAction, setPlayerAction] = useState("");
+    const [playerBet, setPlayerBet] = useState(0);
+    const [isCardOpen, setIsCardOpen] = useState(false); // 콜이 나올 경우 카드 오픈( 콜일 경우 True)
+    const [gameCount, setGameCount] = useState<number>(0)
+    // 승자 계산하는 용으로 카드 식별 저장 (As, 5d 이런것들)
+    const [firstCardCode, setFirstCardCode] = useState("");
+    const [secondCardCode, setSecondCardCode] = useState("");
+    const [botFirstCardCode, setBotFirstCardCode] = useState("");
+    const [botSecondCardCode, setBotSecondCardCode] = useState("");
+
+    // 게임 진행 상태
+    const [isGameProgress, setIsGameProgress] = useState<boolean>(false);
+    const [communityCardCodes, setCommunityCardCodes] = useState<string[]>([]);
     const card_images: Record<string, string> = {
         // Aces
         As: cardAs,
@@ -148,66 +173,375 @@ export default function GamePage() {
         '2h': card2h,
         '2d': card2d,
     };
-    async function handleBetting(e : any) {
+
+    function botRandomAction(playerBet: number) {
+        if (botMoney <= 0) {
+            setBotAction("올인 후 잔액 0");
+            return;
+        }
+
+        const r = Math.random(); // 0 이상 1 미만
+
+        // 0 ~ 1 사이 랜덤 값으로 행동 결정
+        // 0.0 ~ 0.3 : 폴드
+        // 0.3 ~ 0.8 : 콜
+        // 0.8 ~ 1.0 : 레이즈
+        if (r < 0.1) {
+            setBotAction("폴드");
+            setBotBet(0);
+            setMyMoney(prev => prev + pot);
+            setPot(0);
+            console.log("봇: 폴드");
+            gameRoundEnd();
+        } else if (r < 0.8) {
+            let callAmount = playerBet;
+            if (callAmount > botMoney) {
+                callAmount = botMoney;
+            }
+
+            setBotMoney(prev => prev - callAmount);
+            setBotBet(prev => prev + callAmount);
+            setPot(prev => prev + callAmount);
+
+            setBotAction("콜");
+
+            console.log(`봇: 콜 ${callAmount}`);
+            openCard();
+        } else {
+            let raiseAmount = playerBet + Math.floor(Math.random() * 50) + 10;
+            if (raiseAmount > botMoney) {
+                raiseAmount = botMoney;
+            }
+            setBotMoney(prev => prev - raiseAmount);
+            setBotBet(raiseAmount);
+            setBotAction(`${raiseAmount}원 레이즈`);
+            setPot(prev => prev + raiseAmount);
+            console.log(`봇: 레이즈 ${raiseAmount}`);
+        }
+    }
+
+
+    async function handleBetting(e: React.FormEvent<HTMLFormElement>) {
+
+        e.preventDefault();
+        // if (communitiyCard1 != "" && communitiyCard4 == "") {
+        //     setGameState("flop");
+        // }
+        // else if (communitiyCard1 != "" && communitiyCard4 != "" && communitiyCard5 == "") {
+        //     setGameState("turn");
+        // }
+        // else if (communitiyCard1 != "" && communitiyCard4 != "" && communitiyCard5 != "") {
+        //     setGameState("river");
+        // }
+        if (bet > myMoney) {
+            alert("가진 금액보다 큰 배팅은 할 수 없습니다.");
+            setBet(0);
+            return false;
+        }
+        setMyMoney(prev => prev - bet);
+        setPlayerBet(bet);
+        setPlayerAction(` ${bet}원 배팅`);
+        setPot(prev => prev + bet);
+
+        botRandomAction(bet);
+        // 프론트에서 배팅처리 전부 처리하게 변경!! 
+
+        // const resp = await axios.post(`${API_URL}/holdem/player/action`, {
+        //     playerId: userId,
+        //     active: "1", // 배팅 후 상대 배팅 가능 여부 
+        //     betSize: bet,
+        //     gameStats: gameState,
+        //     gameId: gameId,
+
+        // });
+
+    }
+
+    function handlePlayerFold() {
+        // 플레이어가 포기 → 봇이 팟 가져감
+        if (pot > 0) {
+            setBotMoney(prev => prev + pot);
+            setPot(0);
+        }
+        setPlayerAction("폴드");
+        setPlayerBet(0);
+        console.log("플레이어: 폴드");
+        gameRoundEnd();
+    }
+
+    function handlePlayerCall() {
+        // 봇이 안 걸었으면 → 체크
+        if (botBet <= 0) {
+            setPlayerAction("체크");
+            setPlayerBet(0);
+            console.log("플레이어: 체크");
+
+        }
+        else if (botBet > 0) {
+
+            setPlayerAction("콜");
+        }
+
+        let callAmount = botBet;
+
+        if (callAmount > myMoney) {
+            callAmount = myMoney; // 가진 돈까지만 콜 (올인 느낌)
+        }
+
+        setMyMoney(prev => prev - callAmount);
+        setPlayerBet(callAmount);
+        setPot(prev => prev + callAmount);
+
+        openCard();
+
+        console.log(`플레이어: 콜 ${callAmount}`);
+    }
+    function gameRoundEnd() {
+        let card1 = document.getElementById("card1");
+        let card2 = document.getElementById("card2");
+        let card3 = document.getElementById("card3");
+        let card4 = document.getElementById("card4");
+        let card5 = document.getElementById("card5");
+        if (card1) card1.classList.add("hide");
+        if (card2) card2.classList.add("hide");
+        if (card3) card3.classList.add("hide");
+        if (card4) card4.classList.add("hide");
+        if (card5) card5.classList.add("hide");
+
+        setBotFirstCard("");
+        setBotSecondCard("");
+        setFirstCard("");
+        setSecondCard("");
+        setCommunitiyCard1("");
+        setCommunitiyCard2("");
+        setCommunitiyCard3("");
+        setCommunitiyCard4("");
+        setCommunitiyCard5("");
+        setPot(0);
+
+        setGameState("blind");
+        setPlayerBet(0);
+        setBotBet(0);
+        setPlayerAction("");
+        setBotAction("");
+        setIsGameProgress(false);
+    }
+
+
+    function openCard() {
+        setGameState((prev) => {
+            if (prev === "blind") return "flop";
+            if (prev === "flop") return "turn";
+            if (prev === "turn") return "river";
+            if (prev === "river") return "showdown";
+            return prev;
+        });
+        console.log(`보드 상태 : ${gameState}`)
+        // 다음 스트리트로 넘어갈 때, 이 스트리트의 베팅은 초기화
+        setPlayerBet(0);
+        setBotBet(0);
+    }
+
+    async function getWhoWin() {
+        console.log(`커뮤니티카드 프론트 : ${communityCardCodes}`)
+
         try {
-            e.preventDefault();
-             const resp = await axios.post(`${API_URL}/holdem/bet`, {
-                player_id: userId,
-                bet_size: document.getElementsByName("bet").values,
+            const resp = await axios.post(`${API_URL}/holdem/winner`, {
+                playerCards: [firstCardCode, secondCardCode],
+                botCards: [botFirstCardCode, botSecondCardCode],
+                communityCards: communityCardCodes,
             });
+            console.log("쇼다운결과 = ", resp);
+            let winner = resp.data.result;
+            alert(`${winner} 가 승리하였습니다! 팟이 모두 ${winner} 에게 갑니다.`);
+
+            if (winner == "player") {
+
+                setMyMoney(prev => prev + pot);
+
+            }
+            else {
+                setBotMoney(prev => prev + pot);
+
+            }
+            setPot(0);
+            setGameState("blind");
+            setIsGameProgress(false);
         } catch (error) {
-            
+
         }
     }
     async function handleGameStart() {
-         try{
+        setGameState("blind");
+        setPlayerBet(0);
+        setBotBet(0);
+        setPot(0);
+        setPlayerAction("");
+        setBotAction("");
+        try {
             const resp = await axios.post(`${API_URL}/holdem/start/solo`, {
                 player_id: userId,
             });
             console.log('게임 시작 결과:', resp.data);
-            const raw = resp.data.player_cards as string; 
+            const raw = resp.data.player_cards as string;
+            const rawCommunityCard = resp.data.comunity_cards as string;
+            const rawBotCard = resp.data.bot_cards as string;
             // 예: "[Card(Qc), Card(2d)]"
 
             const codes = raw.match(/[2-9TJQKA][scdh]/g) || [];
+            const codes2 = rawCommunityCard.match(/[2-9TJQKA][scdh]/g) || [];
+            const codes3 = rawBotCard.match(/[2-9TJQKA][scdh]/g) || [];
+
             console.log("raw:", raw);
+            console.log("raw:", rawCommunityCard);
             console.log("codes:", codes);
+            console.log("codes2:", codes2);
+            console.log("codes3:", codes3);
+            console.log("gamecount", gameCount);
+            if (gameCount < 1) {
+
+                setBotMoney(resp.data.bot_money);
+                setMyMoney(resp.data.player_money);
+            }
+
+            console.log(`봇돈 =  ${botMoney}`);
+            console.log(`내 돈 =  ${myMoney}`);
 
             const [firstCode, secondCode] = codes;
+            const [cCard1, cCard2, cCard3, cCard4, cCard5] = codes2;
+            const [firstBotCard, secondBotCard] = codes3;
+
+            console.log(`공유패 =  ${cCard1}`);
+            // 승자 계산용 코드 저장
+            setFirstCardCode(firstCode || "");
+            setSecondCardCode(secondCode || "");
+            setBotFirstCardCode(firstBotCard || "");
+            setBotSecondCardCode(secondBotCard || "");
+            setCommunityCardCodes(codes2 || "");
+
+            setCommunitiyCard1(card_images[cCard1 || "값없음"]);
+            setCommunitiyCard2(card_images[cCard2 || "값없음"]);
+            setCommunitiyCard3(card_images[cCard3 || "값없음"]);
+            setCommunitiyCard4(card_images[cCard4 || "값없음"]);
+            setCommunitiyCard5(card_images[cCard5 || "값없음"]);
+
+            setBotFirstCard(card_images[firstBotCard || "값없음"]);
+            setBotSecondCard(card_images[secondBotCard || "값없음"]);
+            setPot(resp.data.pot);
+
+            console.log(" 게임 팟 : ", pot);
+            console.log("cCard1  = ", cCard1);
             console.log("firstCode:", firstCode, "secondCode:", secondCode);
             console.log(`테스트카드이미지 : ${card_images["2c"]}`)
             console.log(`카드이미지 :  ${card_images[firstCode || "값없음"]}`)
             console.log(`카드이미지2 :  ${card_images[secondCode || "값없음"]}`)
-            
+
             setFirstCard(card_images[firstCode || "값없음"]);
             setSecondCard(card_images[secondCode || "값없음"]);
+            console.log(` 봇배팅 ${resp.data.bot_money}`)
+            console.log(` 플레이어 배팅 ${resp.data.player_Money}`)
+            // setBotMoney(resp.data.bot_money);
+            // setMyMoney(resp.data.player_money);
+            setGameId(resp.data.game_id);
             console.log(`카드이미지2222  :  ${secondCard}`)
-
+            setGameCount(prev => prev + 1);
+            setIsGameProgress(true);
         } catch (error) {
             console.error('게임 시작 중 오류 발생:', error);
-        } 
+        }
     }
+
+    useEffect(() => {
+        if (gameState === "showdown") {
+            getWhoWin();
+        }
+    }, [gameState]);
     return (
         <>
-            <button onClick={handleGameStart}>
-                게임 시작하기
-            </button>
-        <div className="game-table-wrapper">
-            {/* <img className="game-table-img" src={tableImg} alt="poker table" /> */}
-            <div >
-                <img src={firstCard} alt="" />
-                <img src={secondCard} alt="" />
+            <div className='background-table-img'>
+                {/* <img className='table-img' src={tableImg} alt="" /> */}
+                {/* <button onClick={getWhoWin}>
+                결과 확인하기
+                </button> */}
+                <div className='game-container'>
+                    <div className='player-section'>
+                        <button className='' onClick={handleGameStart} >
+                            게임 시작하기
+                        </button>
+                        <div> game id : {gameId} </div>
+                        <div>
+                            <p> 봇 카드 : </p>
+                            <div>
+                                <img src={botFirstCard} className='game_table_card_size' alt="" />
+                                <img src={botSecondCard} className='game_table_card_size' alt="" />
+                                <div>
+                                    <p>가진 돈 :  {botMoney}</p>
+                                    <p>액션 : {botAction}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className='game-table-section'>
+                        <div className="game-table-wrapper">
+                            <p>팟 : {pot}</p>
+                            {/* <img className="game-table-img" src={tableImg} alt="poker table" /> */}
+                            <div style={{ display: 'none' }}>
+                            </div>
+                            {gameState !== "blind" && (
+                                <>
+                                    <img src={communitiyCard1} id='card1' alt="" className='game_table_card_size' />
+                                    <img src={communitiyCard2} id='card2' alt="" className='game_table_card_size' />
+                                    <img src={communitiyCard3} id='card3' alt="" className='game_table_card_size' />
+                                </>
+                            )}
 
-            </div>
-            <div>
-                <form action="" name='frm'>
-                <input type='number' name='bet'>
-                </input>
-                <p>가진 돈 :  </p>
-                <button onClick={handleBetting}>배팅하기</button>
-                </form>
-            </div>
-        </div>
-        <div>
+                            {(gameState === "turn" || gameState === "river") && (
+                                <img src={communitiyCard4} id='card4' alt="" className='game_table_card_size' />
+                            )}
+
+                            {gameState === "river" && (
+                                <img src={communitiyCard5} id='card5' alt="" className='game_table_card_size' />
+                            )}
+                        </div>
+                    </div>
+                    <div className='player-section'>
+                        <div className='hands'>
+                            <img src={firstCard} className='game_table_card_size' alt="" />
+                            <img src={secondCard} className='game_table_card_size' alt="" />
+                        </div>
+                        <div className='action'>
+                            <form action="" name='frm' onSubmit={handleBetting}>
+                                <p> 플레이어 액션 :  {playerAction}</p>
+
+                                <input type='hidden' name='gameId' value={gameId} />
+                                {isGameProgress == true && (
+                                    <>
+                                        <div className='btn-box'>
+                                            <button className='bet-btn' type="button" name='fold' onClick={handlePlayerFold}>폴드</button>
+                                            <button className='bet-btn' type="button" name='call' onClick={handlePlayerCall}>체크/콜</button>
+                                            <button className='bet-btn' type='submit' >배팅하기</button>
+                                        </div>
+                                        {/* <button name='raise'>레이즈</button> */}
+                                        <input
+
+                                            type="range"
+                                            name="bet"
+                                            value={bet}
+                                            onChange={(e) => {
+                                                const value = Number(e.target.value);
+                                                setBet(isNaN(value) ? 0 : value);
+                                            }}
+                                        />
+
+                                    </>
+                                )}
+
+                                <p>가진 돈 :  {myMoney}</p>
+                            </form>
+                        </div>
+                    </div>
+
+                </div>
             </div>
         </>
     );
