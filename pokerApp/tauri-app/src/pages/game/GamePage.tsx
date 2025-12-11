@@ -71,6 +71,8 @@ import card2s from "@/assets/images/Playing Cards/SVG-cards-1.3/2_of_spades.svg"
 import card2c from "@/assets/images/Playing Cards/SVG-cards-1.3/2_of_clubs.svg";
 import card2h from "@/assets/images/Playing Cards/SVG-cards-1.3/2_of_hearts.svg";
 import card2d from "@/assets/images/Playing Cards/SVG-cards-1.3/2_of_diamonds.svg";
+import chips from "@/assets/images/chips.png";
+
 
 
 
@@ -106,6 +108,17 @@ export default function GamePage() {
     // 게임 진행 상태
     const [isGameProgress, setIsGameProgress] = useState<boolean>(false);
     const [communityCardCodes, setCommunityCardCodes] = useState<string[]>([]);
+
+
+    // 칩 애니메이션 표시 여부
+    const [showPlayerChipAnim, setShowPlayerChipAnim] = useState(false);
+    const [showBotChipAnim, setShowBotChipAnim] = useState(false);
+
+    // 가운데 보여줄 텍스트
+    const [centerMessage, setCenterMessage] = useState("");
+    const [messageQueue, setMessageQueue] = useState<string[]>([]);
+
+
     const card_images: Record<string, string> = {
         // Aces
         As: cardAs,
@@ -174,9 +187,17 @@ export default function GamePage() {
         '2d': card2d,
     };
 
+    // 가운데 텍스트 보여줫다 사라지게 하는 함수 
+    function showCenterAction(message: string) {
+        setCenterMessage(message);
+        setTimeout(() => {
+            setCenterMessage("");
+        }, 4000); //
+    }
     function botRandomAction(playerBet: number) {
         if (botMoney <= 0) {
             setBotAction("올인 후 잔액 0");
+            showCenterAction("봇: 올인");
             return;
         }
 
@@ -192,6 +213,7 @@ export default function GamePage() {
             setMyMoney(prev => prev + pot);
             setPot(0);
             console.log("봇: 폴드");
+            showCenterAction("봇: 폴드");
             gameRoundEnd();
         } else if (r < 0.8) {
             let callAmount = playerBet;
@@ -206,6 +228,10 @@ export default function GamePage() {
             setBotAction("콜");
 
             console.log(`봇: 콜 ${callAmount}`);
+            showCenterAction(`봇: 콜 ${callAmount}`);
+            setShowBotChipAnim(false);
+            setTimeout(() => setShowBotChipAnim(true), 0);
+
             openCard();
         } else {
             let raiseAmount = playerBet + Math.floor(Math.random() * 50) + 10;
@@ -217,6 +243,46 @@ export default function GamePage() {
             setBotAction(`${raiseAmount}원 레이즈`);
             setPot(prev => prev + raiseAmount);
             console.log(`봇: 레이즈 ${raiseAmount}`);
+            showCenterAction(`봇: 레이즈 ${raiseAmount}`);
+            setShowBotChipAnim(false);
+            setTimeout(() => setShowBotChipAnim(true), 0);
+
+        }
+    }
+    function botActionAfterCheck() {
+        if (botMoney <= 0) {
+            setBotAction("체크");
+            showCenterAction("봇: 체크");
+            console.log("봇: 체크 (잔액 0)");
+            openCard();
+            return;
+        }
+
+        const r = Math.random();
+
+        if (r < 0.5) {
+            setBotAction("체크");
+            showCenterAction("봇: 체크");
+            console.log("봇: 체크");
+
+            openCard();
+        } else {
+            let betAmount = Math.floor(Math.random() * 50) + 10; // 랜덤 베팅
+            if (betAmount > botMoney) {
+                betAmount = botMoney;
+            }
+
+            setBotMoney(prev => prev - betAmount);
+            setBotBet(betAmount);
+            setPot(prev => prev + betAmount);
+
+            setBotAction(`${betAmount}원 배팅`);
+            showCenterAction(`봇: 배팅 ${betAmount}`);
+            console.log(`봇: 배팅 ${betAmount}`);
+
+            setShowBotChipAnim(false);
+            setTimeout(() => setShowBotChipAnim(true), 0);
+
         }
     }
 
@@ -238,11 +304,14 @@ export default function GamePage() {
             setBet(0);
             return false;
         }
+        setShowPlayerChipAnim(false);
+        setTimeout(() => setShowPlayerChipAnim(true), 0);
         setMyMoney(prev => prev - bet);
         setPlayerBet(bet);
         setPlayerAction(` ${bet}원 배팅`);
         setPot(prev => prev + bet);
 
+        await new Promise(resolve => setTimeout(resolve, 2000));
         botRandomAction(bet);
         // 프론트에서 배팅처리 전부 처리하게 변경!! 
 
@@ -266,36 +335,46 @@ export default function GamePage() {
         setPlayerAction("폴드");
         setPlayerBet(0);
         console.log("플레이어: 폴드");
+        showCenterAction("플레이어: 폴드");
         gameRoundEnd();
     }
 
     function handlePlayerCall() {
-        // 봇이 안 걸었으면 → 체크
         if (botBet <= 0) {
             setPlayerAction("체크");
             setPlayerBet(0);
             console.log("플레이어: 체크");
+            showCenterAction("플레이어: 체크");
+            openCard();
+            setTimeout(() => {
+                botActionAfterCheck();
+            }, 1500);
 
+            return;
         }
-        else if (botBet > 0) {
 
-            setPlayerAction("콜");
-        }
+        setPlayerAction("콜");
 
         let callAmount = botBet;
-
         if (callAmount > myMoney) {
-            callAmount = myMoney; // 가진 돈까지만 콜 (올인 느낌)
+            callAmount = myMoney;
         }
 
         setMyMoney(prev => prev - callAmount);
         setPlayerBet(callAmount);
         setPot(prev => prev + callAmount);
 
-        openCard();
+        setShowPlayerChipAnim(false);
+        setTimeout(() => setShowPlayerChipAnim(true), 0);
 
         console.log(`플레이어: 콜 ${callAmount}`);
+        showCenterAction(`플레이어: 콜 ${callAmount}`);
+
+
+
+        openCard();
     }
+
     function gameRoundEnd() {
         let card1 = document.getElementById("card1");
         let card2 = document.getElementById("card2");
@@ -440,6 +519,7 @@ export default function GamePage() {
             setSecondCard(card_images[secondCode || "값없음"]);
             console.log(` 봇배팅 ${resp.data.bot_money}`)
             console.log(` 플레이어 배팅 ${resp.data.player_Money}`)
+            showCenterAction(`게임을 시작합니다!`);
             // setBotMoney(resp.data.bot_money);
             // setMyMoney(resp.data.player_money);
             setGameId(resp.data.game_id);
@@ -464,26 +544,49 @@ export default function GamePage() {
                 결과 확인하기
                 </button> */}
                 <div className='game-container'>
+                    <button className='start-game-btn' onClick={handleGameStart} >
+                        게임 시작하기
+                    </button>
+                    <div> game id : {gameId} </div>
                     <div className='player-section'>
-                        <button className='' onClick={handleGameStart} >
-                            게임 시작하기
-                        </button>
-                        <div> game id : {gameId} </div>
-                        <div>
-                            <p> 봇 카드 : </p>
-                            <div>
-                                <img src={botFirstCard} className='game_table_card_size' alt="" />
-                                <img src={botSecondCard} className='game_table_card_size' alt="" />
-                                <div>
-                                    <p>가진 돈 :  {botMoney}</p>
-                                    <p>액션 : {botAction}</p>
-                                </div>
-                            </div>
+
+                        {/* <p> 봇 카드 : </p> */}
+                        <div className='hands'>
+                            <img src={botFirstCard} className='game_table_card_size' alt="" />
+                            <img src={botSecondCard} className='game_table_card_size' alt="" />
                         </div>
+                        <div className='action'>
+                            {/* <p>가진 돈 :  {botMoney}</p>
+                                    <p>액션 : {botAction}</p> */}
+                        </div>
+
                     </div>
                     <div className='game-table-section'>
                         <div className="game-table-wrapper">
                             <p>팟 : {pot}</p>
+                            {centerMessage && (
+                                <div className="center-action-message">
+                                    {centerMessage}
+                                </div>
+                            )}
+                            {showBotChipAnim && (
+                                <img
+                                    src={chips}
+                                    alt="bot bet chips"
+                                    className="chip-anim chip-anim-bot"
+                                    onAnimationEnd={() => setShowBotChipAnim(false)}
+                                />
+                            )}
+
+                            {/* 🔽 플레이어 칩 (아래에서 위로) */}
+                            {showPlayerChipAnim && (
+                                <img
+                                    src={chips}
+                                    alt="player bet chips"
+                                    className="chip-anim chip-anim-player"
+                                    onAnimationEnd={() => setShowPlayerChipAnim(false)}
+                                />
+                            )}
                             {/* <img className="game-table-img" src={tableImg} alt="poker table" /> */}
                             <div style={{ display: 'none' }}>
                             </div>
@@ -511,7 +614,7 @@ export default function GamePage() {
                         </div>
                         <div className='action'>
                             <form action="" name='frm' onSubmit={handleBetting}>
-                                <p> 플레이어 액션 :  {playerAction}</p>
+                                {/* <p> 플레이어 액션 :  {playerAction}</p> */}
 
                                 <input type='hidden' name='gameId' value={gameId} />
                                 {isGameProgress == true && (
@@ -522,21 +625,26 @@ export default function GamePage() {
                                             <button className='bet-btn' type='submit' >배팅하기</button>
                                         </div>
                                         {/* <button name='raise'>레이즈</button> */}
-                                        <input
+                                        <div className="bet-range-wrapper">
+                                            <input
+                                                type="range"
+                                                name="bet"
+                                                value={bet}
+                                                min={200}
+                                                max={myMoney}
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    setBet(isNaN(value) ? 0 : value);
+                                                }}
+                                            />
+                                            <span className="bet-value">{bet} 원</span>
+                                        </div>
 
-                                            type="range"
-                                            name="bet"
-                                            value={bet}
-                                            onChange={(e) => {
-                                                const value = Number(e.target.value);
-                                                setBet(isNaN(value) ? 0 : value);
-                                            }}
-                                        />
 
                                     </>
                                 )}
 
-                                <p>가진 돈 :  {myMoney}</p>
+                                {/* <p>가진 돈 :  {myMoney}</p> */}
                             </form>
                         </div>
                     </div>

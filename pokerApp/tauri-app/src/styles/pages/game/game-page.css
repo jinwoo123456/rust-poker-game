@@ -8,11 +8,11 @@
 
  .background-table-img {
      margin: 0 auto;
-     width: 80vw;
-     height: 80vh;
+     width: 100%;
+     height: 100%;
 
      background-image: url("/src/assets/images/poker-table2.png");
-     background-size: cover;
+     background-size: contain;
      background-position: center;
      background-repeat: no-repeat;
 
@@ -51,11 +51,12 @@
  }
 
  .game-container {
-     margin: 0 auto;
+     /* margin: 0 auto;
      align-items: center;
      justify-content: center;
      width: 100vh;
-     height: 40vh;
+     height: 40vh; */
+     justify-content: space-between;
  }
 
  .player-section {
@@ -118,4 +119,166 @@
 
  .action {
      width: 50%;
+     background-color: gray;
+ }
+
+ .bet-range-wrapper {
+     width: 100%;
+     /* action 영역 안에서 꽉 차게 */
+     display: flex;
+     flex-direction: column;
+     /* 위: 슬라이더 / 아래: 숫자 */
+ }
+
+ .bet-range-wrapper input[type="range"] {
+     width: 100%;
+     box-sizing: border-box;
+ }
+
+ .bet-value {
+     margin-top: 4px;
+     text-align: right;
+     /* 오른쪽 정렬 */
+     white-space: nowrap;
+     /* 숫자/원 줄바꿈 안 되게 */
+ }
+
+ .start-game-btn {
+     position: absolute;
+     z-index: 1;
+     top: 0;
+     left: 50%;
+ }
+
+ .game-table-section {
+     position: relative;
+     /* chip-anim 이 이 영역 기준으로 위치 잡도록 */
+ }
+
+ /* 칩 애니메이션용 이미지 */
+ .chip-anim {
+     position: absolute;
+     left: 50%;
+     /* 가운데 정렬 */
+     bottom: -40px;
+     /* 시작점을 약간 아래쪽으로 (배팅 버튼 쪽 느낌) */
+     width: 40px;
+     /* 칩 크기 */
+     transform: translateX(-50%);
+     pointer-events: none;
+     animation: chip-move 0.6s ease-out forwards;
+ }
+
+ .game-table-section {
+     position: relative;
+     /* chip-anim 이 이 영역 기준으로 위치 잡도록 */
+ }
+
+ /* 칩 애니메이션용 이미지 */
+ .chip-anim {
+     position: absolute;
+     left: 50%;
+     /* 가운데 정렬 */
+     bottom: -40px;
+     /* 시작점을 약간 아래쪽으로 (배팅 버튼 쪽 느낌) */
+     width: 40px;
+     /* 칩 크기 */
+     transform: translateX(-50%);
+     pointer-events: none;
+     animation: chip-move 0.6s ease-out forwards;
+ }
+
+ .game-table-section,
+ .game-table-wrapper {
+     position: relative;
+ }
+
+ /* 공통 속성 */
+ .chip-anim {
+     position: absolute;
+     left: 50%;
+     width: 40px;
+     transform: translateX(-50%);
+     pointer-events: none;
+ }
+
+ /* 🔽 플레이어 칩: 아래에서 위로 */
+ .chip-anim-player {
+     bottom: -40px;
+     /* 아래쪽에서 시작 */
+     animation: chip-move-up 0.6s ease-out forwards;
+ }
+
+ /* 🔼 봇 칩: 위에서 아래로 */
+ .chip-anim-bot {
+     top: -40px;
+     /* 위쪽에서 시작 */
+     animation: chip-move-down 0.6s ease-out forwards;
+ }
+
+ @keyframes chip-move-up {
+     0% {
+         transform: translate(-50%, 80px) scale(0.8);
+         /* 더 아래 */
+         opacity: 0;
+     }
+
+     30% {
+         opacity: 1;
+     }
+
+     100% {
+         transform: translate(-50%, 0px) scale(1);
+         /* 중앙(pot 근처) */
+         opacity: 0;
+     }
+ }
+
+ @keyframes chip-move-down {
+     0% {
+         transform: translate(-50%, -80px) scale(0.8);
+         /* 더 위 */
+         opacity: 0;
+     }
+
+     30% {
+         opacity: 1;
+     }
+
+     100% {
+         transform: translate(-50%, 0px) scale(1);
+         opacity: 0;
+     }
+ }
+
+ .center-action-message {
+     position: absolute;
+     top: 50%;
+     left: 50%;
+     transform: translate(-50%, -50%);
+     font-size: 2rem;
+     /* 글자 크기 */
+     font-weight: bold;
+     color: #fff;
+     text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+     pointer-events: none;
+     animation: center-fade 1.5s ease-out forwards;
+     white-space: nowrap;
+ }
+
+ @keyframes center-fade {
+     0% {
+         opacity: 0;
+         transform: translate(-50%, -60%);
+     }
+
+     20% {
+         opacity: 1;
+         transform: translate(-50%, -50%);
+     }
+
+     100% {
+         opacity: 0;
+         transform: translate(-50%, -40%);
+     }
  }

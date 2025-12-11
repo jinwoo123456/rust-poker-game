@@ -26,7 +26,7 @@ export default function MatchPage() {
     };
 
     async function handleSoloMatch() {
-         if (!userId) {
+        if (!userId) {
             console.error('로그인 정보가 없습니다.');
             return;
         }
@@ -38,8 +38,8 @@ export default function MatchPage() {
         try {
             setIsLoading(true);
             setIsMatching(true);
-            navigate('/game', { state: userId});
-            
+            navigate('/game', { state: userId });
+
 
         } catch (error) {
             console.error('매칭 생성 중 오류 발생:', error);
@@ -55,11 +55,11 @@ export default function MatchPage() {
             return;
         }
 
-        try{
+        try {
             setIsLoading(true);
             const resp = await axios.post(`${API_URL}/holdem/start`, {
                 player_id: userId,
-                select_player_id : playerId,
+                select_player_id: playerId,
             });
             console.log('게임 시작 결과:', resp.data);
             setHasRedirected(true);
@@ -73,6 +73,10 @@ export default function MatchPage() {
 
 
     async function handleMatch() {
+
+        alert("현재 미구현 기능입니다. ai 대전을 이용해주세요.");
+        return;
+
         if (!userId) {
             console.error('로그인 정보가 없습니다.');
             return;
@@ -180,7 +184,7 @@ export default function MatchPage() {
                         <button className="btn btn-primary" onClick={handleMatch}>
                             {isMatching ? '매칭 중...' : '매칭 잡기'}
                         </button>
-                       
+
                         <button className="btn btn-primary" onClick={handleSoloMatch}>
                             {isMatching ? '매칭 중...' : 'AI랑 하기'}
                         </button>
@@ -204,7 +208,7 @@ export default function MatchPage() {
                                             <td>{new Date(player.match_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</td>
                                             <td>
                                                 <input type="hidden" value={player.userid} />
-                                                <button onClick={()=> handleStartGame(player.userid)} className="btn btn-sm btn-primary">게임하기</button>
+                                                <button onClick={() => handleStartGame(player.userid)} className="btn btn-sm btn-primary">게임하기</button>
                                             </td>
                                         </tr>
                                     ))
